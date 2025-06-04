@@ -1,0 +1,20 @@
+name: asuka
+channels:
+  - pytorch
+  - defaults
+  - conda-forge
+  - nvidia
+dependencies:
+  - python=3.11
+  - numpy
+  - pyyaml
+  - pytorch==2.4.1
+  - torchvision==0.19.1
+  - pytorch-cuda=11.8
+  - diffusers==0.30.2
+  - datasets
+  - huggingface_hub
+  - tqdm
+  - transformers==4.45.2
+  - omegaconf
+  - einops
