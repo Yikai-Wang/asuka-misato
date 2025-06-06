@@ -42,7 +42,7 @@ For the alignment module in ASUKA (FLUX.1-Fill), we use a CFG scale of 0.5. In o
 
 ## Known Issues
 
-- The decoder doesn't handle resized masks very well, especially when the mask is scaled down from a larger size. This can lead to jagged or unrealistic edges. For better results, it's recommended to first resize the image to the target size, and then apply the mask.
+- The decoder doesn't handle resized masks very well, especially when the mask is scaled down from a larger size. This can lead to jagged or unrealistic edges. For better results, it's recommended to first resize the image to the target size, and then mask the unwanted region.
 - Both the alignment and decoder may not work properly if the image resolution during testing is very different from the resolution used during training.
 
 ## Usage
