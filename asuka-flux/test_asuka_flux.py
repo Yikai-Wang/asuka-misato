@@ -27,7 +27,6 @@ from PIL import Image
 from tqdm.auto import tqdm
 
 import diffusers
-from diffusers.utils.import_utils import is_torch_npu_available
 
 from omegaconf import OmegaConf
 from torch.utils.data import DataLoader, DistributedSampler
@@ -43,18 +42,21 @@ from datas.misato_dataset import InpaintingDataset
 from einops import rearrange
 from accelerate import DistributedDataParallelKwargs
 
-from src.flux.modules.layers import SingleStreamBlockAsuka
-
-
 logger = get_logger(__name__)
-if is_torch_npu_available():
-    torch.npu.config.allow_internal_format = False
 
 
-def log_validation(vae, flow_transformer, val_dataloader, step, accelerator,
-                   weight_dtype, visual_condition_extractor, alignment_clip, alignment_flant, img_size,seed=42):
+
+def log_validation(vae, flow_transformer, val_dataloader, step, accelerator, weight_dtype, visual_condition_extractor, alignment_clip, alignment_flant, img_size):
     if accelerator.is_main_process:
         logger.info(f"Validation log in step {step}")
+
+    seed = 42
+
+    none_clip_fea = torch.load("data/vec_empty.pt").to(accelerator.device, dtype=weight_dtype)
+    none_flant_fea = torch.load("data/txt_256.pt").to(accelerator.device, dtype=weight_dtype)
+
+
+    condition_weight = args.condition_weight
 
     with torch.no_grad(), torch.cuda.amp.autocast(dtype=torch.bfloat16):
         for batch in tqdm(val_dataloader, desc=f"Validation rank{accelerator.process_index}..."):
@@ -78,6 +80,10 @@ def log_validation(vae, flow_transformer, val_dataloader, step, accelerator,
             clip_fea, flant_fea = get_visual_learned_conditioning(visual_condition_extractor, alignment_clip, alignment_flant, mae, mae_mask)
             clip_fea = clip_fea.to(dtype=weight_dtype)
             flant_fea = flant_fea.to(dtype=weight_dtype)
+
+            bs = orig_img.shape[0]
+            clip_fea = none_clip_fea + condition_weight * (clip_fea - none_clip_fea.repeat(bs, 1))
+            flant_fea = none_flant_fea + condition_weight * (flant_fea - none_flant_fea.repeat(bs, 1, 1))
 
 
             inp['vec'] = clip_fea
@@ -158,8 +164,12 @@ def parse_args(input_args=None):
         default=None,
         help="decoder path.",
     )
-
-
+    parser.add_argument(
+        "--condition_weight",
+        type=float,
+        default=None,
+        help="condition_weight.",
+    )
 
 
 
@@ -170,6 +180,10 @@ def parse_args(input_args=None):
         args = parser.parse_args()
 
 
+    if args.proportion_empty_prompts < 0 or args.proportion_empty_prompts > 1:
+        raise ValueError("`--proportion_empty_prompts` must be in the range [0, 1].")
+
+
 
     if args.resolution % 8 != 0:
         raise ValueError(
@@ -177,6 +191,7 @@ def parse_args(input_args=None):
         )
 
     return args
+
 
 def prepare_model(chkpt_dir, arch='mae_vit_base_patch16', random_mask=False, finetune=False, mae_mask_concat=False):
     # build model
@@ -190,19 +205,20 @@ def prepare_model(chkpt_dir, arch='mae_vit_base_patch16', random_mask=False, fin
 
 def get_visual_learned_conditioning(visual_condition_extractor, alignment_clip, alignment_flant, x, mask):
     with torch.no_grad():
-        x = visual_condition_extractor.forward_return_feature(x, mask, decoder_layer=6).detach()
+        x = visual_condition_extractor.forward_return_feature(x, mask, decoder_layer=6).detach() # 8 * 256 * 512
         if torch.any(torch.isnan(x)):
             print('nan found in mae feature')
             x = torch.zeros_like(x)
 
     with torch.cuda.amp.autocast(dtype=torch.bfloat16):
-        clip_fea = alignment_clip(x)
+        clip_fea = alignment_clip(x)  # 8 * 256 * 768
         flant_fea = alignment_flant(x)
     clip_fea = torch.mean(clip_fea, dim=1)
     return clip_fea, flant_fea
 
 
-def get_single_stream_blk_asuka(dim=768):
+from src.flux.modules.layers import SingleStreamBlockAsuka
+def get_single_stram_blk_asuka(dim=768):
     head_num = dim // 64
     alignment = nn.Sequential(
                 nn.Linear(512, dim),
@@ -217,11 +233,11 @@ def get_single_stream_blk_asuka(dim=768):
 
 
 def get_alignment_clip():
-    return get_single_stream_blk_asuka(768)
+    return get_single_stram_blk_asuka(768)
 
 
 def get_alignment_flant():
-    return get_single_stream_blk_asuka(4096)
+    return get_single_stram_blk_asuka(4096)
 
 
 def get_flux_fill_input(orig_img, mask, mask_cond, ae, device, weight_dtype, img_size=512):
@@ -233,8 +249,8 @@ def get_flux_fill_input(orig_img, mask, mask_cond, ae, device, weight_dtype, img
     img_cond = torch.cat((img_cond, mask_cond), dim=-1)
 
     bs = img_cond.shape[0]
-    txt = torch.load("./ckpt/txt.pt").repeat((bs, 1, 1))
-    img_ids = torch.load(f"./ckpt/img_ids_{img_size}.pt").repeat((bs, 1, 1))
+    txt = torch.load("./data/txt.pt").repeat((bs, 1, 1))
+    img_ids = torch.load(f"./data/img_ids_{img_size}.pt").repeat((bs, 1, 1))
 
     ret = dict(img_ids=img_ids, txt=txt, img_cond=img_cond)
 
@@ -244,17 +260,58 @@ def get_flux_fill_input(orig_img, mask, mask_cond, ae, device, weight_dtype, img
     return ret
 
 
+from torch import Tensor
+
+def one_step_denoise(model,
+    # model input
+    img: Tensor,
+    img_ids: Tensor,
+    txt: Tensor,
+    txt_ids: Tensor,
+    vec: Tensor,
+    # sampling parameters
+    timesteps: Tensor,
+    guidance: float = 4.0,
+    # extra img tokens
+    img_cond: Tensor | None = None,
+):
+    guidance_vec = torch.full((img.shape[0],), guidance, device=img.device, dtype=img.dtype)
+    pred = model(
+        img=torch.cat((img, img_cond), dim=-1) if img_cond is not None else img,
+        img_ids=img_ids,
+        txt=txt,
+        txt_ids=txt_ids,
+        y=vec,
+        timesteps=timesteps,
+        guidance=guidance_vec,
+    )
+
+    return pred
 
 
 
+def get_resume_path(resume_from_checkpoint, output_dir):
+     if resume_from_checkpoint:
+        if resume_from_checkpoint != "latest":
+            path = os.path.basename(resume_from_checkpoint)
+        else:
+            # Get the most recent checkpoint
+            dirs = os.listdir(output_dir)
+            dirs = [d for d in dirs if d.startswith("checkpoint")]
+            dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
+            path = dirs[-1] if len(dirs) > 0 else None
+
+        if path is None:
+            import sys; sys.exit(-1)
+        else:
+            return os.path.join(output_dir, path)
 
 
 def main(args):
-
-
     ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
 
     accelerator = Accelerator(
+        gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         kwargs_handlers=[ddp_kwargs]
     )
@@ -267,6 +324,10 @@ def main(args):
     else:
         transformers.utils.logging.set_verbosity_error()
         diffusers.utils.logging.set_verbosity_error()
+
+
+
+
 
     # Load Model
     name = "flux-dev-fill"
@@ -288,12 +349,14 @@ def main(args):
     vae.decoder = decoder
     vae.load_state_dict(flux_ae, strict=False)
 
-    resume_path = args.resume_path
+
+
+    resume_path = get_resume_path(args.resume_from_checkpoint, args.resume_path)
     accelerator.print(f"Resuming from checkpoint {resume_path}")
 
-    load_model = torch.load(os.path.join(resume_path, "asuka_alignment_clip.pt"), map_location=torch.device('cpu'))
+    load_model = torch.load(os.path.join(resume_path, "alignment1.pt"))
     alignment_clip.load_state_dict(load_model)
-    load_model = torch.load(os.path.join(resume_path, "asuka_alignment_t5.pt"), map_location=torch.device('cpu'))
+    load_model = torch.load(os.path.join(resume_path, "alignment2.pt"))
     alignment_flant.load_state_dict(load_model)
 
 
@@ -319,8 +382,9 @@ def main(args):
 
 
     # ====== Start Dataset ======
-    # val_dataset = InpaintingDataset(mode='val', img_size=args.resolution, rank=accelerator.process_index, full_eval=args.full_val)
-    val_dataset = InpaintingDataset(img_size=args.resolution)
+    val_dataset = InpaintingDataset(mode='val', img_size=args.resolution, rank=accelerator.process_index, full_eval=args.full_val)
+
+
     val_sampler = DistributedSampler(val_dataset, shuffle=False, rank=accelerator.process_index, num_replicas=accelerator.num_processes)
 
     # DataLoaders creation:
@@ -334,13 +398,28 @@ def main(args):
 
     # ====== End Dataset ======
 
+    if accelerator.is_main_process:
+        tracker_config = dict(vars(args))
+        accelerator.init_trackers(args.tracker_project_name, config=tracker_config)
+
+        result_dir = args.result_dir
+        result_dir = Path(result_dir).parent
+        import json
+        with open(result_dir/'args.json', 'w') as f:
+            json.dump(vars(args), f, indent=4)
+
 
 
     global_step = 0
+    first_epoch = 0
+
+
+
 
     res = log_validation(
         vae, flow_transformer, val_dataloader, global_step, accelerator, weight_dtype, visual_condition_extractor, alignment_clip, alignment_flant, args.resolution
     )
+
 
     # Create the pipeline using using the trained modules and save it.
     accelerator.wait_for_everyone()
