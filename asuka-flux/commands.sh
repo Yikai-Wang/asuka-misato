@@ -49,7 +49,7 @@ GEN_DIR=logs/ours_1024/imgs
 CUDA_VISIBLE_DEVICES=0 accelerate launch test_asuka_flux.py \
     --resume_path="ckpt" \
     --resume_from_checkpoint="checkpoint-162000" \
-    --decoder_ckpt_path=ckpt/epoch=3-step=412154.ckpt \
+    --decoder_ckpt_path=ckpt/asuka_decoder.ckpt \
     --result_dir=$GEN_DIR \
     --mixed_precision="bf16" \
     --resolution=1024 \

@@ -130,7 +130,7 @@ def get_models_asuka(name: str, device: torch.device):
     decoder = Decoder(**ddconfig)
     ae.decoder = decoder
 
-    state_dict = torch.load("ckpt/decoder/epoch=3-step=412154.ckpt")
+    state_dict = torch.load("ckpt/asuka_decoder.ckpt")
     asuka_decoder = {}
     for k, v in state_dict['state_dict'].items():
         if k.startswith("decoder."):
