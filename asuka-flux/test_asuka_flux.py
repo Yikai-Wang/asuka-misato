@@ -52,8 +52,8 @@ def log_validation(vae, flow_transformer, val_dataloader, step, accelerator, wei
 
     seed = 42
 
-    none_clip_fea = torch.load("data/vec_empty.pt").to(accelerator.device, dtype=weight_dtype)
-    none_flant_fea = torch.load("data/txt_256.pt").to(accelerator.device, dtype=weight_dtype)
+    none_clip_fea = torch.load("./ckpt/vec.pt").to(accelerator.device, dtype=weight_dtype)
+    none_flant_fea = torch.load("./ckpt/txt.pt").to(accelerator.device, dtype=weight_dtype)
 
 
     condition_weight = args.condition_weight
@@ -152,7 +152,6 @@ def parse_args(input_args=None):
             " flag passed with the `accelerate.launch` command. Use this argument to override the accelerate config."
         ),
     )
-    parser.add_argument("--resume_path", type=str, default=None)
     parser.add_argument(
         "--full_val",
         action="store_true",
@@ -249,8 +248,8 @@ def get_flux_fill_input(orig_img, mask, mask_cond, ae, device, weight_dtype, img
     img_cond = torch.cat((img_cond, mask_cond), dim=-1)
 
     bs = img_cond.shape[0]
-    txt = torch.load("./data/txt.pt").repeat((bs, 1, 1))
-    img_ids = torch.load(f"./data/img_ids_{img_size}.pt").repeat((bs, 1, 1))
+    txt = torch.load("./ckpt/txt.pt").repeat((bs, 1, 1))
+    img_ids = torch.load(f"./ckpt/img_ids_{img_size}.pt").repeat((bs, 1, 1))
 
     ret = dict(img_ids=img_ids, txt=txt, img_cond=img_cond)
 
@@ -289,22 +288,6 @@ def one_step_denoise(model,
     return pred
 
 
-
-def get_resume_path(resume_from_checkpoint, output_dir):
-     if resume_from_checkpoint:
-        if resume_from_checkpoint != "latest":
-            path = os.path.basename(resume_from_checkpoint)
-        else:
-            # Get the most recent checkpoint
-            dirs = os.listdir(output_dir)
-            dirs = [d for d in dirs if d.startswith("checkpoint")]
-            dirs = sorted(dirs, key=lambda x: int(x.split("-")[1]))
-            path = dirs[-1] if len(dirs) > 0 else None
-
-        if path is None:
-            import sys; sys.exit(-1)
-        else:
-            return os.path.join(output_dir, path)
 
 
 def main(args):
@@ -351,12 +334,10 @@ def main(args):
 
 
 
-    resume_path = get_resume_path(args.resume_from_checkpoint, args.resume_path)
-    accelerator.print(f"Resuming from checkpoint {resume_path}")
 
-    load_model = torch.load(os.path.join(resume_path, "alignment1.pt"))
+    load_model = torch.load("./ckpt/asuka_alignment_clip.pt")
     alignment_clip.load_state_dict(load_model)
-    load_model = torch.load(os.path.join(resume_path, "alignment2.pt"))
+    load_model = torch.load("./ckpt/asuka_alignment_t5.pt")
     alignment_flant.load_state_dict(load_model)
 
 

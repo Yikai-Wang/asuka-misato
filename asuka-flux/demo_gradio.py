@@ -346,8 +346,8 @@ def get_flux_asuka_res(tmp_img, tmp_mask, height, width, num_steps, guidance, to
     clip_fea = clip_fea.to(dtype=weight_dtype)
     flant_fea = flant_fea.to(dtype=weight_dtype)
 
-    none_clip_fea = torch.load("data/vec_empty.pt").to(torch_device, dtype=weight_dtype)
-    none_flant_fea = torch.load("data/txt_256.pt").to(torch_device, dtype=weight_dtype)
+    none_clip_fea = torch.load("./ckpt/vec.pt").to(torch_device, dtype=weight_dtype)
+    none_flant_fea = torch.load("./ckpt/txt.pt").to(torch_device, dtype=weight_dtype)
 
     condition_weight = 0.5
     clip_fea = none_clip_fea + condition_weight * (clip_fea - none_clip_fea.repeat(1, 1))
