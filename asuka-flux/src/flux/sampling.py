@@ -137,12 +137,12 @@ def prepare_empty_prompt(img: Tensor, prompt: str | list[str]) -> dict[str, Tens
 
     if isinstance(prompt, str):
         prompt = [prompt]
-    txt = torch.load("./ckpt/prompt_embeds/empty_t5.pt").to(img.device, dtype=img.dtype)
+    txt = torch.load("./ckpt/txt.pt").to(img.device, dtype=img.dtype)
     if txt.shape[0] == 1 and bs > 1:
         txt = repeat(txt, "1 ... -> bs ...", bs=bs)
     txt_ids = torch.zeros(bs, txt.shape[1], 3)
 
-    vec = torch.load("./ckpt/prompt_embeds/empty_clip.pt").to(img.device, dtype=img.dtype)
+    vec = torch.load("./ckpt/vec.pt").to(img.device, dtype=img.dtype)
     if vec.shape[0] == 1 and bs > 1:
         vec = repeat(vec, "1 ... -> bs ...", bs=bs)
 

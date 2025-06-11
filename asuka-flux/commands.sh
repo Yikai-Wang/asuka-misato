@@ -37,10 +37,10 @@ CUDA_VISIBLE_DEVICES=0 accelerate launch test_flux.py \
     --resolution=1024 \
     --val_batch_size=4 \
     --full_val
-CUDA_VISIBLE_DEVICES=1 python eval/cal_psnr_lpips_ssim.py --generated_dir $GEN_DIR > ${RES_DIR}/psnr_lpips_ssim.txt
-CUDA_VISIBLE_DEVICES=1 python eval/cal_ids.py --generated_dir $GEN_DIR --resolution 1024 > ${RES_DIR}/ids.txt
-CUDA_VISIBLE_DEVICES=1 python eval/cal_grad.py --generated_dir $GEN_DIR --resolution 1024 > ${RES_DIR}/grad.txt
-CUDA_VISIBLE_DEVICES=1 python eval/cal_clip_score.py --generated_dir $GEN_DIR > ${RES_DIR}/clip.txt
+CUDA_VISIBLE_DEVICES=0 python eval/cal_psnr_lpips_ssim.py --generated_dir $GEN_DIR  --gt_dir ./data/1024 --resolution 1024 > ${RES_DIR}/psnr_lpips_ssim.txt
+CUDA_VISIBLE_DEVICES=0 python eval/cal_ids.py --generated_dir $GEN_DIR --gt_dir ./data/1024 --resolution 1024 > ${RES_DIR}/ids.txt
+CUDA_VISIBLE_DEVICES=0 python eval/cal_grad.py --generated_dir $GEN_DIR --gt_dir ./data/1024 --resolution 1024 > ${RES_DIR}/grad.txt
+CUDA_VISIBLE_DEVICES=0 python eval/cal_clip_score.py --generated_dir $GEN_DIR --gt_dir ./data/1024 --resolution 1024 > ${RES_DIR}/clip.txt
 
 # Test Asuka Flux 1024
 RES_DIR=logs/ours_1024/

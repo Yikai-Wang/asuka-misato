@@ -53,7 +53,7 @@ def log_validation(vae, flow_transformer, val_dataloader, step, accelerator, wei
     seed = 42
 
     none_clip_fea = torch.load("./ckpt/vec.pt").to(accelerator.device, dtype=weight_dtype)
-    none_flant_fea = torch.load("./ckpt/txt.pt").to(accelerator.device, dtype=weight_dtype)
+    none_flant_fea = torch.load("./ckpt/txt_256.pt").to(accelerator.device, dtype=weight_dtype)
 
 
     condition_weight = args.condition_weight
@@ -166,7 +166,7 @@ def parse_args(input_args=None):
     parser.add_argument(
         "--condition_weight",
         type=float,
-        default=None,
+        default=0.5,
         help="condition_weight.",
     )
 
@@ -177,10 +177,6 @@ def parse_args(input_args=None):
         args = parser.parse_args(input_args)
     else:
         args = parser.parse_args()
-
-
-    if args.proportion_empty_prompts < 0 or args.proportion_empty_prompts > 1:
-        raise ValueError("`--proportion_empty_prompts` must be in the range [0, 1].")
 
 
 
@@ -294,7 +290,6 @@ def main(args):
     ddp_kwargs = DistributedDataParallelKwargs(find_unused_parameters=True)
 
     accelerator = Accelerator(
-        gradient_accumulation_steps=args.gradient_accumulation_steps,
         mixed_precision=args.mixed_precision,
         kwargs_handlers=[ddp_kwargs]
     )
@@ -363,7 +358,7 @@ def main(args):
 
 
     # ====== Start Dataset ======
-    val_dataset = InpaintingDataset(mode='val', img_size=args.resolution, rank=accelerator.process_index, full_eval=args.full_val)
+    val_dataset = InpaintingDataset(img_size=args.resolution)
 
 
     val_sampler = DistributedSampler(val_dataset, shuffle=False, rank=accelerator.process_index, num_replicas=accelerator.num_processes)
@@ -381,7 +376,6 @@ def main(args):
 
     if accelerator.is_main_process:
         tracker_config = dict(vars(args))
-        accelerator.init_trackers(args.tracker_project_name, config=tracker_config)
 
         result_dir = args.result_dir
         result_dir = Path(result_dir).parent

@@ -53,9 +53,6 @@ def log_validation(model, vae, val_dataloader, step, accelerator, weight_dtype, 
     clip_fea = torch.load("ckpt/vec.pt").to(accelerator.device, dtype=weight_dtype)
     flant_fea = torch.load("ckpt/txt.pt").to(accelerator.device, dtype=weight_dtype)
 
-    print(torch.randn(3,3))
-
-
     with torch.no_grad():
         for batch in tqdm(val_dataloader, desc=f"Validation rank{accelerator.process_index}..."):
             orig_img = batch["orig_img"].to(accelerator.device, dtype=weight_dtype)

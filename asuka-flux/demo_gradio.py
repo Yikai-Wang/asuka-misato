@@ -430,6 +430,7 @@ def main(
 
 
         output_dir = "./tmp"
+        os.makedirs(output_dir, exist_ok=True)
         current_time = datetime.datetime.now().strftime('%Y%m%d_%H%M%S_%f')
         tag = f"{current_time}_{random.randint(10000, 99999)}"
         tmp_img = os.path.join(output_dir, f"{tag}_image.png")
