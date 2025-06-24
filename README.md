@@ -39,6 +39,7 @@ The authors do not own the image copyrights. Please follow the original dataset'
 
 ## Updates
 
+ - [x] Released the training mask used in ASUKA.
  - [x] Released the ASUKA (FLUX.1-Fill) model and inference code.
  - [x] Released the MISATO@1K dataset.
  - [x] Released the MISATO@512 dataset.
@@ -47,6 +48,10 @@ The authors do not own the image copyrights. Please follow the original dataset'
 
 We've released a version of the ASUKA model compatible with the [FLUX.1-Fill-dev](https://huggingface.co/black-forest-labs/FLUX.1-Fill-dev) inpainting model.
 Please refer to the sub-folder for more information.
+
+## Training mask
+
+We've released the training mask at [Huggingface](https://huggingface.co/datasets/yikaiwang/MISATO).
 
 ## MISATO dataset
 
